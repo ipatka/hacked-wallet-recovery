@@ -75,6 +75,33 @@ export const AssetSelectionStep = ({
     setSelectedAssetIndices(newAssets);
   };
 
+  // Add multiple assets and select them all
+  const addMultipleAssets = (items: IWrappedRecoveryTx[]) => {
+    if (items.length === 0) return;
+    
+    setAccountAssets(current => {
+      const newAssets = [...current, ...items];
+      
+      // Select all newly added assets
+      const newIndices = items.map((_, i) => current.length + i);
+      setSelectedAssetIndices(prevIndices => [...newIndices, ...prevIndices]);
+      
+      return newAssets;
+    });
+    
+    setIsAddingManually(false);
+  };
+
+  // Add a single asset and select it
+  const addSingleAsset = (item: IWrappedRecoveryTx) => {
+    setAccountAssets(current => {
+      const newAssets = [...current, item];
+      selectAsset(current.length); // Select the newly added asset
+      return newAssets;
+    });
+    setIsAddingManually(false);
+  };
+
   const onBackButton = () => {
     setAccountAssets([]);
     onBack();
@@ -90,11 +117,8 @@ export const AssetSelectionStep = ({
         hackedAddress={hackedAddress}
         isVisible={isAddingManually}
         close={() => setIsAddingManually(false)}
-        addAsset={item => {
-          setAccountAssets(current => [...current, item]);
-          selectAsset(accountAssets.length);
-          setIsAddingManually(false);
-        }}
+        addAsset={addSingleAsset}
+        addMultipleAssets={addMultipleAssets}
       />
 
       <div className={`flex items-center justify-space-between ${styles.titleContainer}`}>

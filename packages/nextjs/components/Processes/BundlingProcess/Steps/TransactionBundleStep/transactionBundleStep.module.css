@@ -90,3 +90,32 @@ font-weight: 500;
     flex-direction: row;
     width: 90%;
 }
+
+.fileActionsContainer {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  margin: 1rem 0;
+  gap: 0.5rem;
+}
+
+.fileActionButton {
+  padding: 0.5rem 1rem;
+  background-color: var(--color-secondary);
+  color: var(--color-text-base);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex: 1;
+}
+
+.fileActionButton:hover {
+  background-color: var(--color-secondary-focus);
+}
+
+.fileActionButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

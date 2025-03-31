@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useCallback, useEffect } from "react";
+import { Dispatch, SetStateAction, useCallback, useEffect, useRef } from "react";
 import Image from "next/image";
 import GasSvg from "../../../../../public/assets/flashbotRecovery/gas.svg";
 import styles from "./transactionBundleStep.module.css";
@@ -33,6 +33,7 @@ export const TransactionBundleStep = ({
   setTotalGasEstimate,
 }: IProps) => {
   const { estimateTotalGasPrice } = useGasEstimation();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const updateGasEstimate = useCallback(async () => {
     if (transactions.length === 0) return;
@@ -62,6 +63,60 @@ export const TransactionBundleStep = ({
     });
   };
 
+  // Download transactions as JSON file
+  const downloadTransactions = () => {
+    if (transactions.length === 0) return;
+    
+    const dataStr = JSON.stringify(transactions, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `recovery-transactions-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // Trigger file input click
+  const triggerFileUpload = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  // Handle file upload
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const parsedTransactions = JSON.parse(content) as RecoveryTx[];
+        
+        // Validate the uploaded data structure
+        if (Array.isArray(parsedTransactions) && parsedTransactions.length > 0) {
+          modifyTransactions(parsedTransactions);
+        } else {
+          alert("Invalid transaction file format");
+        }
+      } catch (error) {
+        console.error("Error parsing transaction file:", error);
+        alert("Error parsing transaction file. Please ensure it's a valid JSON file.");
+      }
+    };
+    reader.readAsText(file);
+    
+    // Reset the file input
+    if (event.target) {
+      event.target.value = '';
+    }
+  };
+
   if (!isVisible) {
     return <></>;
   }
@@ -84,6 +139,31 @@ export const TransactionBundleStep = ({
             <TransactionItem key={i} onDelete={() => removeUnsignedTx(i)} tx={item} />
           ))}
         </div>
+        
+        {/* File actions container */}
+        <div className={styles.fileActionsContainer}>
+          <button 
+            className={styles.fileActionButton} 
+            onClick={downloadTransactions}
+            disabled={transactions.length === 0}
+          >
+            Download Transactions
+          </button>
+          <button 
+            className={styles.fileActionButton} 
+            onClick={triggerFileUpload}
+          >
+            Upload Transactions
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            style={{ display: 'none' }}
+            onChange={handleFileUpload}
+          />
+        </div>
+        
         <span className={styles.clear} onClick={clear}>
           Clear all
         </span>

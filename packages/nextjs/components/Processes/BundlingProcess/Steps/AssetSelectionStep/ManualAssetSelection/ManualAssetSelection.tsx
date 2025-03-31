@@ -4,6 +4,7 @@ import { AbiNinjaFlow } from "./AbiNinjaFlow/AbiNinjaFlow";
 import { BasicFlow } from "./BasicFlow/BasicFlow";
 import { CustomFlow } from "./CustomFlow/CustomFlow";
 import { RawFlow } from "./RawFlow/RawFlow";
+import { UploadFlow } from "./UploadFlow/UploadFlow";
 import styles from "./manualAssetSelection.module.css";
 import { ImpersonatorIframeProvider } from "@impersonator/iframe";
 import { motion } from "framer-motion";
@@ -17,8 +18,16 @@ interface IProps {
   hackedAddress: string;
   safeAddress: string;
   addAsset: (asset: IWrappedRecoveryTx) => void;
+  addMultipleAssets?: (assets: IWrappedRecoveryTx[]) => void;
 }
-export const ManualAssetSelection = ({ isVisible, close, safeAddress, addAsset, hackedAddress }: IProps) => {
+export const ManualAssetSelection = ({ 
+  isVisible, 
+  close, 
+  safeAddress, 
+  addAsset, 
+  hackedAddress,
+  addMultipleAssets 
+}: IProps) => {
   const portalSelector = document.querySelector("#myportal");
   if (!portalSelector || !isVisible) {
     return <></>;
@@ -38,7 +47,7 @@ export const ManualAssetSelection = ({ isVisible, close, safeAddress, addAsset, 
         </span>
         <div className={`${styles.modalContent}`}>
           <h3 className={`${styles.title}`}>{"Add assets manually"}</h3>
-          <Tabs tabTitles={["Basic", "Custom", "Raw", "ABI Ninja"]}>
+          <Tabs tabTitles={["Basic", "Custom", "Raw", "ABI Ninja", "Upload"]}>
             {active => {
               const isBasic = active == 0;
               if (isBasic) {
@@ -47,14 +56,29 @@ export const ManualAssetSelection = ({ isVisible, close, safeAddress, addAsset, 
                 return <CustomFlow hackedAddress={hackedAddress} addAsset={item => addAsset(item)} />;
               } else if (active == 2) {
                 return <RawFlow hackedAddress={hackedAddress} addAsset={item => addAsset(item)} />;
+              } else if (active == 3) {
+                return (
+                  // Adding the provider here instead of _app.tsx so that it resets the states on each render
+                  // because @impersonator/iframe uses react context and does not give api to reset the state
+                  <ImpersonatorIframeProvider>
+                    <AbiNinjaFlow addUnsignedTx={item => addAsset(item)} />
+                  </ImpersonatorIframeProvider>
+                );
               }
 
               return (
-                // Adding the provider here instead of _app.tsx so that it resets the states on each render
-                // because @impersonator/iframe uses react context and does not give api to reset the state
-                <ImpersonatorIframeProvider>
-                  <AbiNinjaFlow addUnsignedTx={item => addAsset(item)} />
-                </ImpersonatorIframeProvider>
+                <UploadFlow 
+                  hackedAddress={hackedAddress} 
+                  addAsset={item => addAsset(item)} 
+                  addMultipleAssets={assets => {
+                    if (addMultipleAssets) {
+                      addMultipleAssets(assets);
+                    } else {
+                      // Fallback if addMultipleAssets is not provided
+                      assets.forEach(asset => addAsset(asset));
+                    }
+                  }}
+                />
               );
             }}
           </Tabs>
