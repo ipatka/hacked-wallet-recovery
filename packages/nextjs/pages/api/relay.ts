@@ -36,7 +36,8 @@ export default async function handler(req: any, res: any) {
     return signedTx;
   });
 
-  const targetBlockNumber = (await provider.getBlockNumber()) + 1;
+  // Use the target block from the request, or default to next block
+  const targetBlockNumber = body.targetBlock || (await provider.getBlockNumber()) + 1;
   const flashbotsTransactionResponse = await flashbotProvider.sendRawBundle(reformattedBundle, targetBlockNumber);
 
   // console.log(`@@@@@@ Bundle submitted targetting block#${targetBlockNumber}`);

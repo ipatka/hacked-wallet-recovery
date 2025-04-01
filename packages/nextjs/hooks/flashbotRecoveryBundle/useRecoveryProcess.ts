@@ -236,7 +236,7 @@ export const useRecoveryProcess = () => {
     }
   };
 
-  const sendBundle = async (currentBundleId: string) => {
+  const sendBundle = async (currentBundleId: string, targetBlock?: number) => {
     if (!flashbotsProvider) {
       showError("Flashbot provider not available");
       resetStatus();
@@ -265,16 +265,32 @@ export const useRecoveryProcess = () => {
 
         const currentUrl = window.location.href.replace("?", "");
         while (true) {
+          // If targetBlock is specified and we haven't reached it yet, wait
           const currentBlock = parseInt((await publicClient.getBlockNumber()).toString());
-          setAttemptedBlock(currentBlock + 2);
+          
+          if (targetBlock && currentBlock < targetBlock - 1) {
+            // Set the attempted block to the target block
+            setAttemptedBlock(targetBlock);
+            
+            // Wait for approximately one block time before checking again
+            await new Promise(resolve => setTimeout(resolve, 12000));
+            continue;
+          }
+          
+          // Use the target block if specified, otherwise use current block + 2
+          const blockToTarget = targetBlock || currentBlock + 2;
+          setAttemptedBlock(blockToTarget);
+          
           const response = await fetch(currentUrl + `api/relay`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               "x-network-id": targetNetwork.id.toString(),
+              "x-target-block": blockToTarget.toString(), // Add target block to headers
             },
             body: JSON.stringify({
               txs,
+              targetBlock: blockToTarget, // Include target block in request body
             }),
             cache: "no-store",
           });
@@ -296,7 +312,12 @@ export const useRecoveryProcess = () => {
             resetStatus();
             break;
           }
-          // BlockPassedWithoutInclusion - try again
+          // BlockPassedWithoutInclusion - try again with next block
+          if (targetBlock) {
+            // If we specified a target block but it passed without inclusion,
+            // increment the target block for the next attempt
+            targetBlock++;
+          }
         }
       } catch (e) {
         console.error(e);
@@ -501,9 +522,9 @@ export const useRecoveryProcess = () => {
       });
   };
 
-  const confirmAndSendBundle = async (currentBundleId: string) => {
+  const confirmAndSendBundle = async (currentBundleId: string, targetBlock?: number) => {
     setStepActive(RecoveryProcessStatus.SEND_BUNDLE);
-    await sendBundle(currentBundleId);
+    await sendBundle(currentBundleId, targetBlock);
   };
 
   return {

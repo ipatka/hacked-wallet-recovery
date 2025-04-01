@@ -1,13 +1,16 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import styles from "./recoveryProcess.module.css";
 import { ethers } from "ethers";
 import { CustomButton } from "~~/components/CustomButton/CustomButton";
+import { InputBase } from "~~/components/scaffold-eth";
 import { RecoveryTx } from "~~/types/business";
+import { usePublicClient } from "wagmi";
+import { getTargetNetwork } from "~~/utils/scaffold-eth";
 
 interface IConfirmBundleStepProps {
   transactions: RecoveryTx[];
   currentBundleId: string;
-  onConfirmBundle: (currentBundleId: string) => void;
+  onConfirmBundle: (currentBundleId: string, targetBlock?: number) => void;
 }
 
 export const ConfirmBundleStep = ({
@@ -15,6 +18,40 @@ export const ConfirmBundleStep = ({
   currentBundleId,
   onConfirmBundle,
 }: IConfirmBundleStepProps) => {
+  const targetNetwork = getTargetNetwork();
+  const publicClient = usePublicClient({ chainId: targetNetwork.id });
+  const [currentBlockNumber, setCurrentBlockNumber] = useState<number>(0);
+  const [targetBlockNumber, setTargetBlockNumber] = useState<string>("");
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // Fetch current block number on component mount
+  useEffect(() => {
+    const fetchBlockNumber = async () => {
+      try {
+        const blockNumber = await publicClient.getBlockNumber();
+        const currentBlock = parseInt(blockNumber.toString());
+        setCurrentBlockNumber(currentBlock);
+        // Default to current block + 2 as recommended starting point
+        setTargetBlockNumber((currentBlock + 2).toString());
+      } catch (error) {
+        console.error("Failed to fetch current block number:", error);
+      }
+    };
+
+    fetchBlockNumber();
+    
+    // Set up polling to keep block number updated
+    const intervalId = setInterval(fetchBlockNumber, 12000); // ~12 seconds per block
+    
+    return () => clearInterval(intervalId);
+  }, [publicClient]);
+
+  const handleSubmit = () => {
+    setIsLoading(true);
+    const targetBlock = targetBlockNumber ? parseInt(targetBlockNumber) : undefined;
+    onConfirmBundle(currentBundleId, targetBlock);
+  };
+
   return (
     <div className={styles.confirmBundleContainer}>
       <h3 className={styles.confirmTitle}>Review Your Transactions</h3>
@@ -50,11 +87,30 @@ export const ConfirmBundleStep = ({
         ))}
       </div>
       
+      <div className={styles.blockNumberContainer}>
+        <h4 className={styles.blockNumberTitle}>Target Block Number</h4>
+        <p className={styles.blockNumberDescription}>
+          Current block: <strong>{currentBlockNumber}</strong>. Recommended starting point: <strong>{currentBlockNumber + 2}</strong>
+        </p>
+        <div className={styles.blockNumberInputContainer}>
+          <InputBase
+            name="targetBlockNumber"
+            placeholder="Enter target block number"
+            value={targetBlockNumber}
+            onChange={value => setTargetBlockNumber(value.replace(/[^0-9]/g, ''))}
+          />
+        </div>
+        <p className={styles.blockNumberHint}>
+          The bundle will first attempt inclusion at this block number. If not included, it will try subsequent blocks.
+        </p>
+      </div>
+      
       <div className={styles.buttonContainer}>
         <CustomButton
           type="btn-primary"
-          text="Confirm and Send Bundle"
-          onClick={() => onConfirmBundle(currentBundleId)}
+          text={isLoading ? "Sending..." : "Confirm and Send Bundle"}
+          onClick={handleSubmit}
+          disabled={isLoading || !targetBlockNumber}
         />
       </div>
     </div>

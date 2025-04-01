@@ -156,3 +156,31 @@
   padding: 0.25rem 0.5rem;
   border-radius: 0.25rem;
 }
+
+.blockNumberContainer {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 0.5rem;
+}
+
+.blockNumberTitle {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.blockNumberDescription {
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.blockNumberInputContainer {
+  margin-bottom: 0.75rem;
+}
+
+.blockNumberHint {
+  font-size: 0.8rem;
+  color: #666;
+  font-style: italic;
+}
