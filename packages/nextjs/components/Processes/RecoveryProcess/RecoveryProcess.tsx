@@ -22,6 +22,8 @@ import TipsSvg from "~~/public/assets/flashbotRecovery/tips.svg";
 import TwitterSvg from "~~/public/assets/flashbotRecovery/twitter.svg";
 import { RecoveryProcessStatus } from "~~/types/enums";
 import { getTargetNetwork } from "~~/utils/scaffold-eth";
+import { GasCustomizationStep } from "./GasCustomizationStep";
+import { RecoveryTx } from "~~/types/business";
 
 interface IRPCParams {
   chainId: string;
@@ -51,6 +53,11 @@ interface IProps {
   isDonationLoading: boolean;
   totalGasEstimate: BigNumber;
   rpcParams: IRPCParams | undefined;
+  transactions: RecoveryTx[];
+  currentBundleId: string;
+  gasMultiplier: number;
+  customizeGasFees: (multiplier: number, transactions: RecoveryTx[], hackedAddress: string, currentBundleId: string) => void;
+  calculateCustomizedGasEstimate: (transactions: RecoveryTx[], multiplier: number) => BigInt;
 }
 
 export const RecoveryProcess = ({
@@ -68,6 +75,11 @@ export const RecoveryProcess = ({
   hackedAddress,
   totalGasEstimate,
   rpcParams,
+  transactions,
+  currentBundleId,
+  gasMultiplier,
+  customizeGasFees,
+  calculateCustomizedGasEstimate,
 }: IProps) => {
   const { showError } = useShowError();
   const { address } = useAccount();
@@ -302,6 +314,27 @@ export const RecoveryProcess = ({
             Please change the network first to <b>{networkName}</b>
           </p>
         </>
+      </CustomPortal>
+    );
+  }
+
+  if (recoveryStatus == RecoveryProcessStatus.CUSTOMIZE_GAS) {
+    return (
+      <CustomPortal
+        title={"Customize Gas Fees"}
+        description={
+          "Adjust the gas fee multiplier to prioritize your recovery transactions. Higher values increase the chance of quick inclusion in a block."
+        }
+        image={SignSvg}
+      >
+        <GasCustomizationStep
+          initialMultiplier={gasMultiplier}
+          transactions={transactions}
+          hackedAddress={hackedAddress}
+          currentBundleId={currentBundleId}
+          onCustomizeGas={customizeGasFees}
+          calculateEstimate={calculateCustomizedGasEstimate}
+        />
       </CustomPortal>
     );
   }

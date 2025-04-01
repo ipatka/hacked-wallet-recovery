@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useShowError } from "./useShowError";
 import { AlchemyProvider, JsonRpcProvider } from "@ethersproject/providers";
 import { FlashbotsBundleProvider } from "@flashbots/ethers-provider-bundle";
@@ -49,6 +49,9 @@ export const useRecoveryProcess = () => {
   const { data: walletClient } = useWalletClient();
 
   const [unsignedTxs, setUnsignedTxs] = useLocalStorage<RecoveryTx[]>("unsignedTxs", []);
+  const [gasMultiplier, setGasMultiplier] = useLocalStorage<number>("gasMultiplier", 1);
+  const [customizedGasEstimate, setCustomizedGasEstimate] = useState<BigNumber>(BigNumber.from(0));
+
   useEffect(() => {
     (async () => {
       if (!targetNetwork || !targetNetwork.blockExplorers) return;
@@ -93,6 +96,23 @@ export const useRecoveryProcess = () => {
     return true;
   };
 
+  const calculateCustomizedGasEstimate = useCallback((transactions: RecoveryTx[], multiplier: number) => {
+    let totalFeePerGas = BigInt(0);
+    let totalGas = BigInt(0);
+
+    for (const tx of transactions) {
+      if (tx.toSign) {
+        totalFeePerGas += BigInt(tx.toSign?.maxFeePerGas || 0);
+        totalGas += BigInt(tx.toSign?.gas || 0);
+      }
+    }
+
+    // Apply the multiplier and add 1% buffer
+    const totalFee = (totalFeePerGas * totalGas * BigInt(Math.floor(multiplier * 100)) * BigInt(101)) / BigInt(10000);
+    setCustomizedGasEstimate(BigNumber.from(totalFee.toString()));
+    return totalFee;
+  }, []);
+
   const changeFlashbotNetwork = async ({ modifyBundleId, setRpcParams }: IChangeRPCProps) => {
     const bundleId = v4();
     const { result, params } = await addRelayRPC(bundleId);
@@ -101,6 +121,8 @@ export const useRecoveryProcess = () => {
       setRpcParams(params);
       return false;
     }
+    // Move to gas customization step instead of directly to signing
+    setStepActive(RecoveryProcessStatus.CUSTOMIZE_GAS);
     return true;
   };
 
@@ -369,9 +391,17 @@ export const useRecoveryProcess = () => {
     hackedAddress,
     transactions,
   }: Pick<IStartProcessProps, "currentBundleId" | "hackedAddress" | "transactions">) => {
+    // If we're coming from the RPC change step, we should go to gas customization first
+    if (stepActive === RecoveryProcessStatus.CHANGE_RPC) {
+      setStepActive(RecoveryProcessStatus.CUSTOMIZE_GAS);
+      // Calculate initial estimate with default multiplier
+      calculateCustomizedGasEstimate(transactions, gasMultiplier);
+      return;
+    }
+
+    // Otherwise, proceed with the normal flow
     setStepActive(RecoveryProcessStatus.PAY_GAS);
     try {
-      // ////////// Cover the envisioned total gas fee from safe account
       await payTheGas(transactions, hackedAddress);
       signRecoveryTransactions(hackedAddress, transactions, currentBundleId, true);
       return;
@@ -414,17 +444,67 @@ export const useRecoveryProcess = () => {
     setStepActive(RecoveryProcessStatus.DONATE);
   };
 
+  const customizeGasFees = (
+    multiplier: number,
+    transactions: RecoveryTx[],
+    hackedAddress: string,
+    currentBundleId: string,
+  ) => {
+    setGasMultiplier(multiplier);
+
+    // Apply the multiplier to all transactions
+    const updatedTransactions = transactions.map(tx => {
+      const updatedTx = { ...tx };
+      if (updatedTx.toSign) {
+        // Apply multiplier to gas fees
+        const maxFeePerGas = BigInt(updatedTx.toSign.maxFeePerGas || 0);
+        const maxPriorityFeePerGas = BigInt(updatedTx.toSign.maxPriorityFeePerGas || 0);
+
+        updatedTx.toSign = {
+          ...updatedTx.toSign,
+          maxFeePerGas: ((maxFeePerGas * BigInt(Math.floor(multiplier * 100))) / BigInt(100)).toString(),
+          maxPriorityFeePerGas: (
+            (maxPriorityFeePerGas * BigInt(Math.floor(multiplier * 100))) /
+            BigInt(100)
+          ).toString(),
+        };
+        return updatedTx;
+      }
+      return tx;
+    });
+
+    // Calculate the new total gas estimate
+    calculateCustomizedGasEstimate(updatedTransactions, multiplier);
+
+    // Move to the next step
+    setStepActive(RecoveryProcessStatus.PAY_GAS);
+
+    // Continue with the process using updated transactions
+    return payTheGas(updatedTransactions, hackedAddress)
+      .then(() => {
+        signRecoveryTransactions(hackedAddress, updatedTransactions, currentBundleId, true);
+      })
+      .catch(e => {
+        resetStatus();
+        showError(`Error while signing the funding transaction with the safe account. Error: ${e}`);
+      });
+  };
+
   return {
     data: stepActive,
     sentBlock,
     sentTxHash,
     attemptedBlock,
+    gasMultiplier,
+    customizedGasEstimate,
     changeFlashbotNetwork,
     startRecoveryProcess,
     signTransactionsStep,
     validateBundleIsReady,
     signRecoveryTransactions,
     generateCorrectTransactions,
+    customizeGasFees,
+    calculateCustomizedGasEstimate,
     resetStatus,
     showTipsModal,
     unsignedTxs,

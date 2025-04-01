@@ -50,6 +50,12 @@ const Home: NextPage = () => {
     generateCorrectTransactions,
     setUnsignedTxs,
     validateBundleIsReady,
+    gasMultiplier,
+    customizedGasEstimate,
+    changeFlashbotNetwork,
+    customizeGasFees,
+    calculateCustomizedGasEstimate,
+    resetStatus,
   } = useRecoveryProcess();
 
   const { config } = usePrepareSendTransaction({
@@ -168,7 +174,7 @@ const Home: NextPage = () => {
           setUnsignedTxs={setUnsignedTxs}
           setIsOnBasket={setIsOnBasket}
           setTotalGasEstimate={setTotalGasEstimate}
-          startRecovery={() => validateBundleIsReady("")}
+          startRecovery={() => validateBundleIsReady()}
         />
 
         <RecoveryProcess
@@ -187,6 +193,11 @@ const Home: NextPage = () => {
           safeAddress={safeAddress}
           hackedAddress={hackedAddress}
           rpcParams={rpcParams}
+          transactions={unsignedTxs}
+          currentBundleId={currentBundleId}
+          gasMultiplier={gasMultiplier}
+          customizeGasFees={customizeGasFees}
+          calculateCustomizedGasEstimate={calculateCustomizedGasEstimate}
         />
 
         {isFinalProcessError && error != "" ? (
