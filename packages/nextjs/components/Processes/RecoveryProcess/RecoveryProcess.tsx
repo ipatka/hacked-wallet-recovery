@@ -24,6 +24,7 @@ import { RecoveryProcessStatus } from "~~/types/enums";
 import { getTargetNetwork } from "~~/utils/scaffold-eth";
 import { GasCustomizationStep } from "./GasCustomizationStep";
 import { RecoveryTx } from "~~/types/business";
+import { ConfirmBundleStep } from "./ConfirmBundleStep";
 
 interface IRPCParams {
   chainId: string;
@@ -58,6 +59,7 @@ interface IProps {
   gasMultiplier: number;
   customizeGasFees: (multiplier: number, transactions: RecoveryTx[], hackedAddress: string, currentBundleId: string) => void;
   calculateCustomizedGasEstimate: (transactions: RecoveryTx[], multiplier: number) => BigInt;
+  confirmAndSendBundle: (currentBundleId: string) => void;
 }
 
 export const RecoveryProcess = ({
@@ -80,6 +82,7 @@ export const RecoveryProcess = ({
   gasMultiplier,
   customizeGasFees,
   calculateCustomizedGasEstimate,
+  confirmAndSendBundle,
 }: IProps) => {
   const { showError } = useShowError();
   const { address } = useAccount();
@@ -87,6 +90,7 @@ export const RecoveryProcess = ({
   const networkName = getTargetNetwork().name;
   const hasEnoughEth = !!balance ? balance > parseFloat(donationValue) : false;
   const showDonationsButton = process.env.NEXT_PUBLIC_SHOW_DONATIONS ?? false;
+  // console.log("Recovery process", recoveryStatus);
   if (recoveryStatus == RecoveryProcessStatus.INITIAL) {
     return <></>;
   }
@@ -334,6 +338,24 @@ export const RecoveryProcess = ({
           currentBundleId={currentBundleId}
           onCustomizeGas={customizeGasFees}
           calculateEstimate={calculateCustomizedGasEstimate}
+        />
+      </CustomPortal>
+    );
+  }
+
+  if (recoveryStatus == RecoveryProcessStatus.CONFIRM_BUNDLE) {
+    return (
+      <CustomPortal
+        title={"Confirm Bundle"}
+        description={
+          "Review your transactions before sending the bundle. Make sure everything looks correct."
+        }
+        image={SignSvg}
+      >
+        <ConfirmBundleStep
+          transactions={transactions}
+          currentBundleId={currentBundleId}
+          onConfirmBundle={confirmAndSendBundle}
         />
       </CustomPortal>
     );

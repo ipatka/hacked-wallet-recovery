@@ -83,32 +83,39 @@ export const useRecoveryProcess = () => {
     setStepActive(RecoveryProcessStatus.INITIAL);
   };
   const validateBundleIsReady = () => {
+    console.log("Validate bundle is ready");
     if (gasCovered) {
+      console.log("Gas covered");
       setStepActive(RecoveryProcessStatus.GAS_PAID);
       return false;
     }
 
     ////////// Enforce switching to the safe address
     if (!address) {
+      console.log("No connected account");
       setStepActive(RecoveryProcessStatus.NO_CONNECTED_ACCOUNT);
       return false;
     }
+    console.log("Gas not covered");
     return true;
   };
 
   const calculateCustomizedGasEstimate = useCallback((transactions: RecoveryTx[], multiplier: number) => {
-    let totalFeePerGas = BigInt(0);
-    let totalGas = BigInt(0);
+    let totalFee = BigInt(0);
 
     for (const tx of transactions) {
       if (tx.toSign) {
-        totalFeePerGas += BigInt(tx.toSign?.maxFeePerGas || 0);
-        totalGas += BigInt(tx.toSign?.gas || 0);
+        // Apply multiplier to the fee per gas first
+        const txFeePerGas = (BigInt(tx.toSign?.maxFeePerGas || 0) * BigInt(Math.floor(multiplier * 100))) / BigInt(100);
+        const txGas = BigInt(tx.toSign?.gas || 0);
+        // Calculate fee for this individual transaction
+        const txFee = txFeePerGas * txGas;
+        totalFee += txFee;
       }
     }
 
-    // Apply the multiplier and add 1% buffer
-    const totalFee = (totalFeePerGas * totalGas * BigInt(Math.floor(multiplier * 100)) * BigInt(101)) / BigInt(10000);
+    // Add 1% buffer to the total
+    totalFee = (totalFee * BigInt(101)) / BigInt(100);
     setCustomizedGasEstimate(BigNumber.from(totalFee.toString()));
     return totalFee;
   }, []);
@@ -141,26 +148,32 @@ export const useRecoveryProcess = () => {
     return { maxBaseFeeInFutureBlock: "0", priorityFee: "0" };
   };
 
-  const payTheGas = async (transactions: RecoveryTx[], hackedAddress: string) => {
-    // Add up all the fees and multiply by the gas cost to get the total fee
-    let totalFeePerGas = BigInt(0);
-    let totalGas = BigInt(0);
+  const payTheGas = async (transactions: RecoveryTx[], hackedAddress: string, multiplier: number) => {
+    // Calculate the total fee by summing individual transaction fees
+    let totalFee = BigInt(0);
+    
     for (const tx of transactions) {
       if (tx.toSign) {
-        totalFeePerGas += BigInt(tx.toSign?.maxFeePerGas || 0);
-        totalGas += BigInt(tx.toSign?.gas || 0);
+        const txFeePerGas = BigInt(tx.toSign?.maxFeePerGas || 0) * BigInt(Math.floor(multiplier * 100)) / BigInt(100);
+        const txGas = BigInt(tx.toSign?.gas || 0);
+        // Calculate fee for this individual transaction
+        const txFee = txFeePerGas * txGas;
+        totalFee += txFee;
       }
     }
+    
     // Add one percent for good measure
-    const totalFee = (totalFeePerGas * totalGas * BigInt(101)) / BigInt(100);
+    totalFee = (totalFee * BigInt(101)) / BigInt(100);
     console.log("DEBUG: totalFee", totalFee);
+    
     const { maxBaseFeeInFutureBlock, priorityFee } = await getEstimatedTxFees();
     await walletClient?.sendTransaction({
       to: hackedAddress as `0x${string}`,
       value: totalFee,
       type: "eip1559",
-      maxFeePerGas: BigInt(priorityFee) + BigInt(maxBaseFeeInFutureBlock),
-      maxPriorityFeePerGas: BigInt(priorityFee),
+      maxFeePerGas:
+        ((BigInt(priorityFee) + BigInt(maxBaseFeeInFutureBlock)) * BigInt(Math.floor(multiplier * 100))) / BigInt(100),
+      maxPriorityFeePerGas: (BigInt(priorityFee) * BigInt(Math.floor(multiplier * 100))) / BigInt(100),
       gas: 23000n,
     });
     setGasCovered(true);
@@ -180,6 +193,7 @@ export const useRecoveryProcess = () => {
 
     ////////// Enforce switching to the hacked address
     if (address != hackedAddress) {
+      console.log("DEBUG: switching to hacked address");
       setStepActive(RecoveryProcessStatus.SWITCH_TO_HACKED_ACCOUNT);
       return;
     }
@@ -188,22 +202,34 @@ export const useRecoveryProcess = () => {
     try {
       for (const tx of transactions) {
         if (tx.toSign) {
+          // In signRecoveryTransactions
           // Numbers are stored as strings so we need to convert to BigInts
-          const { to, from, data, type, maxFeePerGas, maxPriorityFeePerGas, gas } = tx.toSign;
+          const { to, from, data, type, gas } = tx.toSign;
+          let { maxFeePerGas, maxPriorityFeePerGas } = tx.toSign;
+          console.log("DEBUG: maxFeePerGas to sign", maxFeePerGas);
+          console.log("DEBUG: maxPriorityFeePerGas to sign", maxPriorityFeePerGas);
+          console.log("DEBUG: applying multiplier to gas fees");
+          maxFeePerGas = (BigInt(maxFeePerGas as string) * BigInt(Math.floor(gasMultiplier * 100))) / BigInt(100);
+          maxPriorityFeePerGas =
+            (BigInt(maxPriorityFeePerGas as string) * BigInt(Math.floor(gasMultiplier * 100))) / BigInt(100);
+          console.log("DEBUG: maxFeePerGas to sign after multiplier", maxFeePerGas);
+          console.log("DEBUG: maxPriorityFeePerGas to sign after multiplier", maxPriorityFeePerGas);
           const readyToSignTx = {
             to,
             from,
             data,
             type,
-            maxFeePerGas: BigInt(maxFeePerGas as string),
-            maxPriorityFeePerGas: BigInt(maxPriorityFeePerGas as string),
+            maxFeePerGas,
+            maxPriorityFeePerGas,
             gas: BigInt(gas as string),
           };
           await walletClient?.sendTransaction(readyToSignTx);
         }
       }
       setGasCovered(false);
-      await sendBundle(currentBundleId);
+
+      // Instead of sending the bundle immediately, move to confirmation step
+      setStepActive(RecoveryProcessStatus.CONFIRM_BUNDLE);
     } catch (e) {
       showError(`FAILED TO SIGN TXS Error: ${e}`);
       resetStatus();
@@ -300,6 +326,7 @@ export const useRecoveryProcess = () => {
     const result: RecoveryTx[] = [];
     for (const item of transactions) {
       let newTX: RecoveryTx = { ...item };
+      console.log("DEBUG: item type", item.type);
       if (item.type === "erc20") {
         const data = item as ERC20Tx;
         newTX = {
@@ -371,7 +398,9 @@ export const useRecoveryProcess = () => {
     modifyBundleId,
     setRpcParams,
   }: IStartProcessProps & IChangeRPCProps) => {
+    console.log("Start recovery process");
     const isValid = validateBundleIsReady();
+    console.log("Validate bundle is ready", isValid);
     if (!isValid) {
       return;
     }
@@ -402,7 +431,7 @@ export const useRecoveryProcess = () => {
     // Otherwise, proceed with the normal flow
     setStepActive(RecoveryProcessStatus.PAY_GAS);
     try {
-      await payTheGas(transactions, hackedAddress);
+      await payTheGas(transactions, hackedAddress, gasMultiplier);
       signRecoveryTransactions(hackedAddress, transactions, currentBundleId, true);
       return;
     } catch (e) {
@@ -452,42 +481,29 @@ export const useRecoveryProcess = () => {
   ) => {
     setGasMultiplier(multiplier);
 
-    // Apply the multiplier to all transactions
-    const updatedTransactions = transactions.map(tx => {
-      const updatedTx = { ...tx };
-      if (updatedTx.toSign) {
-        // Apply multiplier to gas fees
-        const maxFeePerGas = BigInt(updatedTx.toSign.maxFeePerGas || 0);
-        const maxPriorityFeePerGas = BigInt(updatedTx.toSign.maxPriorityFeePerGas || 0);
 
-        updatedTx.toSign = {
-          ...updatedTx.toSign,
-          maxFeePerGas: ((maxFeePerGas * BigInt(Math.floor(multiplier * 100))) / BigInt(100)).toString(),
-          maxPriorityFeePerGas: (
-            (maxPriorityFeePerGas * BigInt(Math.floor(multiplier * 100))) /
-            BigInt(100)
-          ).toString(),
-        };
-        return updatedTx;
-      }
-      return tx;
-    });
 
     // Calculate the new total gas estimate
-    calculateCustomizedGasEstimate(updatedTransactions, multiplier);
+    calculateCustomizedGasEstimate(transactions, multiplier);
 
     // Move to the next step
     setStepActive(RecoveryProcessStatus.PAY_GAS);
 
     // Continue with the process using updated transactions
-    return payTheGas(updatedTransactions, hackedAddress)
+    return payTheGas(transactions, hackedAddress, gasMultiplier)
       .then(() => {
-        signRecoveryTransactions(hackedAddress, updatedTransactions, currentBundleId, true);
+        console.log("DEBUG: starting signing of recovery transactions after gas customization");
+        signRecoveryTransactions(hackedAddress, transactions, currentBundleId, true);
       })
       .catch(e => {
         resetStatus();
         showError(`Error while signing the funding transaction with the safe account. Error: ${e}`);
       });
+  };
+
+  const confirmAndSendBundle = async (currentBundleId: string) => {
+    setStepActive(RecoveryProcessStatus.SEND_BUNDLE);
+    await sendBundle(currentBundleId);
   };
 
   return {
@@ -509,5 +525,6 @@ export const useRecoveryProcess = () => {
     showTipsModal,
     unsignedTxs,
     setUnsignedTxs,
+    confirmAndSendBundle,
   };
 };

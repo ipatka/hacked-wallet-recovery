@@ -55,6 +55,7 @@ const Home: NextPage = () => {
     changeFlashbotNetwork,
     customizeGasFees,
     calculateCustomizedGasEstimate,
+    confirmAndSendBundle,
     resetStatus,
   } = useRecoveryProcess();
 
@@ -70,13 +71,16 @@ const Home: NextPage = () => {
   } = useSendTransaction(config);
 
   const startSigning = (address: string) => {
+    
     const transformedTransactions = generateCorrectTransactions({
       transactions: unsignedTxs,
       safeAddress: address,
       hackedAddress,
     });
+    
+    
     setUnsignedTxs(transformedTransactions);
-    signRecoveryTransactions(hackedAddress, unsignedTxs, currentBundleId, false);
+    signRecoveryTransactions(hackedAddress, transformedTransactions, currentBundleId, false);
   };
 
   const startRecovery = () => {
@@ -198,6 +202,7 @@ const Home: NextPage = () => {
           gasMultiplier={gasMultiplier}
           customizeGasFees={customizeGasFees}
           calculateCustomizedGasEstimate={calculateCustomizedGasEstimate}
+          confirmAndSendBundle={confirmAndSendBundle}
         />
 
         {isFinalProcessError && error != "" ? (
